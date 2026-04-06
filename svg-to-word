@@ -1,0 +1,834 @@
+import requests
+import io
+import base64
+
+api_key = 'K88674996488957' # Free api key from ocr.space public docs
+
+with open("test_render.png", "rb") as f:
+    img_data = f.read()
+
+payload = {
+    'apikey': api_key,
+    'language': 'tur',
+    'base64Image': 'data:image/png;base64,' + base64.b64encode(img_data).decode('utf-8'),
+    'OCREngine': '2' # Engine 2 is usually better for special characters
+}
+
+print("Gonderiliyor...")
+response = requests.post('https://api.ocr.space/parse/image', data=payload)
+if response.status_code == 200:
+    res = response.json()
+    if res['IsErroredOnProcessing']:
+        print("Error:", res['ErrorMessage'])
+    else:
+        parsed_text = res['ParsedResults'][0]['ParsedText']
+        print("Success! Extracted Text:")
+        print(parsed_text)
+else:
+    print(f"Failed with status: {response.status_code}")
+
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPM
+import io
+import os
+
+svg_path = r"C:\Users\HÜMEYRA\Desktop\finansal ekonomi ders 1_files\slide1.svg"
+
+try:
+    print(f"Loading SVG from: {svg_path}")
+    drawing = svg2rlg(svg_path)
+    if drawing is None:
+        print("Failed to load SVG with svglib.")
+    else:
+        out_png = "test_render.png"
+        renderPM.drawToFile(drawing, out_png, fmt="PNG")
+        print(f"Successfully rendered to {out_png}")
+except Exception as e:
+    print(f"Error: {e}")
+
+import os
+
+file_path = r"C:\Users\HÜMEYRA\Desktop\finansal ekonomi ders 1_files\slide1.svg"
+with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+    content = file.read()
+    print("Does it contain aria-label?", 'aria-label' in content)
+    print("Does it contain unicode=?", 'unicode=' in content)
+    
+    # Check if there are any <g id="text..."> or anything similardocument.addEventListener('DOMContentLoaded', () => {
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const resultsSection = document.getElementById('results-section');
+    const sortableList = document.getElementById('sortable-list');
+    const generateBtn = document.getElementById('generate-btn');
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    let parsedItems = [];
+
+    // Drag and Drop Effects
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+    });
+
+    // Handle Drop & Selection
+    dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        handleFiles(files);
+    }, false);
+
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+    });
+
+    async function handleFiles(files) {
+        if (!files || files.length === 0) return;
+        
+        const formData = new FormData();
+        Array.from(files).forEach(file => {
+            if (file.type === "image/svg+xml" || file.name.endsWith('.svg')) {
+                formData.append('files', file);
+            }
+        });
+
+        if (!formData.has('files')) {
+            alert('Lütfen en az bir adet geçerli SVG dosyası seçin.');
+            return;
+        }import io
+from typing import List
+from fastapi import APIRouter, File, UploadFile, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from services import extract_text_from_svg, build_docx
+
+router = APIRouter()
+
+class DocumentItem(BaseModel):
+    filename: str
+    texts: List[str]
+
+class GenerateRequest(BaseModel):
+    items: List[DocumentItem]
+
+@router.post("/parse-svgs")
+async def parse_svgs(files: List[UploadFile] = File(...)):
+    results = []
+    
+    for file in files:
+        if not file.filename.lower().endswith(".svg"):
+            results.append({
+                "filename": file.filename,
+                "success": False,
+                "error": "Sadece SVG desteklenmektedir."
+            })
+            continue
+            
+        content = await file.read()
+        try:
+            texts = extract_text_from_svg(content)
+            if not texts:
+                results.append({
+                    "filename": file.filename,
+                    "success": False,
+                    "error": "Okunabilir metin bulunamadı."
+                })
+            else:
+                results.append({
+                    "filename": file.filename,
+                    "success": True,
+                    "texts": texts
+                })
+        except Exception as e:
+            results.append({
+                "filename": file.filename,
+                "success": False,
+                "error": f"Hata: {str(e)}"
+            })
+            
+    return {"data": results}
+
+@router.post("/generate-docx")
+async def generate_docx(req: GenerateRequest):
+    items = [item.dict() for item in req.items]
+    if not items:
+        raise HTTPException(status_code=400, detail="Veri listesi boş.")
+        
+    doc_io = build_docx(items)
+    
+    return StreamingResponse(
+        doc_io, 
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": "attachment; filename=Converted.docx"
+        }
+    )
+
+import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+import uvicorn
+from api import router as api_router
+
+app = FastAPI(title="SVG to Word Converter API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router, prefix="/api")
+
+# Static frontend mount
+frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+else:
+    @app.get("/")
+    def no_frontend():
+        return {"message": "Frontend is missing. API is running on /api"}
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+fastapi
+uvicorn
+python-docx
+beautifulsoup4
+python-multipart
+lxml
+svglib
+reportlab
+requests
+
+from bs4 import BeautifulSoup
+from docx import Document
+from docx.shared import Pt
+from svglib.svglib import svg2rlg
+from reportlab.graphics import renderPM
+import io
+import base64
+import requests
+
+def extract_text_from_svg(svg_content: bytes) -> list:
+    """Parses SVG and extracts all nested <text> and <tspan> strings."""
+    try:
+        soup = BeautifulSoup(svg_content, 'lxml-xml')
+    except Exception:
+        # Fallback to html parser if lxml is not perfectly working
+        soup = BeautifulSoup(svg_content, 'html.parser')
+        
+    extracted = []
+    
+    # 1. Klasik SVG text elementleri
+    texts = soup.find_all(['text', 'tspan'])
+    if texts:
+        for t in texts:
+            text_val = t.get_text(strip=True)
+            if text_val:
+                extracted.append(text_val)
+    
+    # 2. Eğer foreignObject veya HTML kullanıldıysa
+    if not extracted:
+        foreign_objects = soup.find_all('foreignObject')
+        for fo in foreign_objects:
+            text_val = fo.get_text(separator=" ", strip=True)
+            if text_val:
+                extracted.append(text_val)
+                
+    # 3. Son çare olarak belgedeki tüm düz metin düğümlerini al
+    if not extracted:
+        all_text = soup.get_text(separator=" ", strip=True)
+        if all_text and len(all_text) > 2: # rastgele kısa semboller hariç
+            extracted.append(all_text)
+            
+    # 4. Hiç metin bulunamadı, demek ki şekillere dönüştürülmüş (OCR kullan)
+    if not extracted:
+        try:
+            svg_io = io.BytesIO(svg_content)
+            drawing = svg2rlg(svg_io)
+            if drawing:
+                png_io = io.BytesIO()
+                renderPM.drawToFile(drawing, png_io, fmt="PNG")
+                png_data = png_io.getvalue()
+                
+                # API Call to OCR Space
+                payload = {
+                    'apikey': 'K88674996488957',
+                    'language': 'tur',
+                    'base64Image': 'data:image/png;base64,' + base64.b64encode(png_data).decode('utf-8'),
+                    'OCREngine': '2'
+                }
+                
+                res = requests.post('https://api.ocr.space/parse/image', data=payload, timeout=15)
+                if res.status_code == 200:
+                    data = res.json()
+                    if not data.get('IsErroredOnProcessing'):
+                        parsed_text = data['ParsedResults'][0]['ParsedText']
+                        if parsed_text.strip():
+                            extracted.append(parsed_text.strip())
+        except Exception as e:
+            print("OCR hatası:", e)
+            
+    return extracted
+
+def build_docx(items: list) -> io.BytesIO:
+    """Creates a Word document from parsed SVG items."""
+    document = Document()
+    
+    heading = document.add_heading('SVG Metin Çıktıları', 0)
+    
+    for item in items:
+        filename = item.get("filename", "Bilinmeyen Dosya")
+        texts = item.get("texts", [])
+        
+        p = document.add_paragraph()
+        runner = p.add_run(filename)
+        runner.bold = True
+        runner.font.size = Pt(14)
+        
+        if texts:
+            content_p = document.add_paragraph()
+            content_p.add_run(" ".join(texts))
+        else:
+            p2 = document.add_paragraph()
+            r2 = p2.add_run("Metin bulunamadı.")
+            r2.italic = True
+            
+        document.add_paragraph()
+        
+    output = io.BytesIO()
+    document.save(output)
+    output.seek(0)
+    
+    return output
+
+
+        loadingOverlay.classList.remove('hidden');
+
+        try {
+            const baseUrl = window.location.origin.includes('5173') || window.location.pathname.endsWith('index.html') 
+                ? 'http://localhost:8000' 
+                : ''; // If run on dev server without proxy
+            
+            const response = await fetch(`${baseUrl}/api/parse-svgs`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error("Sunucu hatası.");
+            
+            const json = await response.json();
+            
+            // Append new items
+            parsedItems = [...parsedItems, ...json.data];
+            renderList();
+            
+        } catch (error) {
+            console.error(error);
+            alert("SVG'ler ayrıştırılırken bir hata oluştu.");
+        } finally {
+            loadingOverlay.classList.add('hidden');
+            fileInput.value = ''; // reset
+        }
+    }
+
+    function renderList() {
+        sortableList.innerHTML = '';
+        if (parsedItems.length === 0) {
+            resultsSection.classList.add('hidden');
+            return;
+        }
+
+        resultsSection.classList.remove('hidden');
+
+        parsedItems.forEach((item, index) => {
+            const li = document.createElement('li');
+            li.className = 'list-item';
+            li.draggable = true;
+            li.dataset.index = index;
+
+            // Drag events
+            li.addEventListener('dragstart', handleDragStart);
+            li.addEventListener('dragover', handleDragOver);
+            li.addEventListener('drop', handleDrop);
+            li.addEventListener('dragenter', (e) => e.preventDefault());
+
+            const successClass = item.success ? 'status-success' : 'status-error';
+            const statusText = item.success ? 'Başarılı' : 'Hata';
+            const previewText = item.success ? item.texts.join(' ').substring(0, 80) + '...' : item.error;
+
+            li.innerHTML = `
+                <i class="fa-solid fa-grip-vertical drag-handle"></i>
+                <div class="item-content">
+                    <div class="item-title">
+                        ${item.filename}
+                        <span class="item-status ${successClass}">${statusText}</span>
+                    </div>
+                    <div class="item-preview" title="${item.success ? item.texts.join(' ') : item.error}">${previewText}</div>
+                </div>
+                <button class="remove-btn" onclick="removeItem(${index})"><i class="fa-solid fa-trash"></i></button>
+            `;
+            sortableList.appendChild(li);
+        });
+    }
+
+    window.removeItem = (index) => {
+        parsedItems.splice(index, 1);
+        renderList();
+    };
+
+    // Drag to Reorder Logic
+    let dragStartIndex;
+
+    function handleDragStart(e) {
+        dragStartIndex = +this.dataset.index;
+        e.dataTransfer.effectAllowed = 'move';
+        setTimeout(() => this.classList.add('dragging'), 0);
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        this.classList.remove('dragging');
+        const dragEndIndex = +this.dataset.index;
+        swapItems(dragStartIndex, dragEndIndex);
+    }
+    
+    document.addEventListener('dragend', (e) => {
+        document.querySelectorAll('.list-item').forEach(li => li.classList.remove('dragging'));
+    });
+
+    function swapItems(fromIndex, toIndex) {
+        const itemOne = parsedItems[fromIndex];
+        parsedItems.splice(fromIndex, 1);
+        parsedItems.splice(toIndex, 0, itemOne);
+        renderList();
+    }
+
+    // Generate DOCX
+    generateBtn.addEventListener('click', async () => {
+        const validItems = parsedItems.filter(i => i.success);
+        if (validItems.length === 0) {
+            alert('Lütfen word belgesi oluşturmak için en az bir geçerli SVG yükleyin.');
+            return;
+        }
+
+        loadingOverlay.classList.remove('hidden');
+
+        try {
+            const baseUrl = window.location.origin.includes('5173') || window.location.pathname.endsWith('index.html') 
+                ? 'http://localhost:8000' 
+                : '';
+            
+            const response = await fetch(`${baseUrl}/api/generate-docx`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: validItems })
+            });
+
+            if (!response.ok) throw new Error("Sunucu hatası.");
+            
+            // Download Blob
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = "Converted.docx";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+        } catch (error) {
+            console.error(error);
+            alert("Word belgesi oluşturulurken hata meydana geldi.");
+        } finally {
+            loadingOverlay.classList.add('hidden');
+        }
+    });
+
+});
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG to Word Converter</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1><i class="fa-solid fa-file-word"></i> SVG'den Word'e Dönüştürücü</h1>
+            <p>SVG dosyalarınızı yükleyin, metinleri ayrıştırın ve tek tıklamayla düzenli bir Word belgesine çevirin.</p>
+        </header>
+
+        <section class="upload-section">
+            <div id="drop-zone" class="drop-zone">
+                <i class="fa-solid fa-cloud-arrow-up icon"></i>
+                <h3>Dosyaları sürükleyip bırakın veya tıklayarak seçin</h3>
+                <p>Sadece .svg uzantısını destekler</p>
+                <input type="file" id="file-input" multiple accept=".svg">
+            </div>
+        </section>
+
+        <section id="results-section" class="results-section hidden">
+            <div class="results-header">
+                <h2><i class="fa-solid fa-list-ol"></i> İçerik Sıralaması</h2>
+                <button id="generate-btn" class="btn primary-btn"><i class="fa-solid fa-download"></i> DOCX İndir</button>
+            </div>
+            <p class="hint"><i class="fa-solid fa-info-circle"></i> Maddeleri sürükleyerek sırasını değiştirebilirsiniz.</p>
+            <ul id="sortable-list" class="sortable-list">
+                <!-- Items will be generated here by JS -->
+            </ul>
+        </section>
+        
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <p>İşleniyor...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+
+:root {
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --bg-color: #0f172a;
+    --card-bg: rgba(30, 41, 59, 0.7);
+    --border-color: rgba(255, 255, 255, 0.1);
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --success: #10b981;
+    --danger: #ef4444;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Outfit', sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+    overflow-x: hidden;
+    position: relative;
+}
+
+.background {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: -1;
+    overflow: hidden;
+}
+
+.shape {
+    position: absolute;
+    filter: blur(100px);
+    border-radius: 50%;
+    opacity: 0.5;
+    animation: float 10s infinite alternate;
+}
+
+.shape-1 {
+    top: -10%; left: -10%;
+    width: 500px; height: 500px;
+    background: #4f46e5;
+}
+
+.shape-2 {
+    bottom: -10%; right: -10%;
+    width: 600px; height: 600px;
+    background: #ec4899;
+    animation-delay: -5s;
+}
+
+@keyframes float {
+    0% { transform: translate(0, 0) scale(1); }
+    100% { transform: translate(50px, 50px) scale(1.1); }
+}
+
+.container {
+    width: 100%;
+    max-width: 900px;
+    background: var(--card-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    padding: 2.5rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    background: linear-gradient(to right, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+header p {
+    color: var(--text-secondary);
+    font-size: 1.1rem;
+}
+
+/* Upload Section */
+.drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 15px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(15, 23, 42, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+
+.drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.drop-zone .icon {
+    font-size: 3rem;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+.drop-zone h3 {
+    margin-bottom: 0.5rem;
+    font-weight: 400;
+}
+
+.drop-zone p {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+#file-input {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* Results Section */
+.results-section {
+    margin-top: 3rem;
+}
+
+.results-section.hidden {
+    display: none;
+}
+
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+}
+
+.primary-btn {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.4);
+}
+
+.primary-btn:hover {
+    background: var(--primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(99, 102, 241, 0.5);
+}
+
+.hint {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Sortable List */
+.sortable-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.list-item {
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    cursor: grab;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.list-item.dragging {
+    opacity: 0.5;
+    background: rgba(30, 41, 59, 0.9);
+}
+
+.list-item:active {
+    cursor: grabbing;
+}
+
+.drag-handle {
+    color: var(--text-secondary);
+    cursor: grab;
+}
+
+.item-content {
+    flex: 1;
+    overflow: hidden;
+}
+
+.item-title {
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.item-status {
+    font-size: 0.8rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 12px;
+}
+
+.status-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+.status-error { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+
+.item-preview {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.remove-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color 0.2s;
+}
+
+.remove-btn:hover {
+    color: var(--danger);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(4px);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+}
+
+.loading-overlay.hidden {
+    display: none;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(255,255,255,0.1);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+    import re
+    # Find all attributes
+    tags = re.findall(r'<.*?>', content)
+    print(f"Total tags: {len(tags)}")
+    
+    # Search for actual words in the SVG as brute force string search
+    # Just remove XML tags and see if there are any words left
+    no_tags = re.sub(r'<[^>]+>', ' ', content)
+    # Remove XML comments and SVG attributes
+    words = [w for w in no_tags.split() if w.isalpha() and len(w) > 3]
+    print(f"Number of alphabetic words found outside tags: {len(words)}")
+    print("Some words:", words[:20])
+
+@echo off
+echo Kurulum basliyor...
+cd backend
+python -m pip install -r requirements.txt
+echo requirements kuruldu. Sunucu baslatiliyor...
+start http://localhost:8000
+python main.py
+pause
